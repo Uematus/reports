@@ -1,0 +1,59 @@
+# Эталон workflow для публичного репо Uematus/reports: кладётся туда в .github/workflows/pages.yml.
+# Склеивает сайт (ветка main, папки отчётов) и данные (ветка data, <отчёт>/*) в один артефакт Pages:
+#   main:<отчёт>/...  -> <отчёт>/...
+#   data:<отчёт>/*    -> <отчёт>/data/*
+# push запускает workflow из своей ветки, поэтому publish_data.sh кладёт копию этого файла и в ветку data.
+# В Settings -> Environments -> github-pages ветку data нужно разрешить для деплоя.
+name: pages
+
+on:
+  push:
+    branches: [main, data]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: data
+
+      - name: Assemble
+        run: |
+          mkdir _site
+          for d in main/*/; do cp -r "$d" _site/; done
+          [ -f main/index.html ] && cp main/index.html _site/
+          for d in data/*/; do
+            r=$(basename "$d")
+            mkdir -p "_site/$r/data"
+            cp "$d"* "_site/$r/data/"
+          done
+          find _site -maxdepth 3 | sort
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
